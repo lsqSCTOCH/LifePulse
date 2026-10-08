@@ -31,3 +31,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+.env
+.env.*
+!.env.example
+**/application-local.yaml
+**/application-local.yml
+*.log
+frontend/logs/
+.DS_Store
