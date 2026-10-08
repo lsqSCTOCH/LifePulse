@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>智能客服 · LifePulse 智享生活平台</title>
+  <link rel="icon" type="image/svg+xml" href="./imgs/lifepulse-mark.svg">
+  <link rel="stylesheet" href="./css/lifepulse.css?v=1">
+  <script src="./js/location.js?v=1"></script>
+  <script src="./js/lifepulse.js?v=1" defer></script>
+</head>
+<body class="page-customer-service">
+<main class="page">
+  <header><div class="lp-assistant-mark" aria-hidden="true">✦</div><div class="heading"><span class="lp-eyebrow">YOUR LOCAL ASSISTANT</span><h1>生活里的问题，随时问我。</h1><small>商户信息 · 优惠券 · 我的订单</small></div><button id="reset">＋ 新建会话</button></header>
+  <div class="status" id="status">正在连接客服服务…</div>
+  <div class="messages" id="messages" role="log" aria-live="polite"></div>
+  <div class="suggestions"><button data-message="查询商户">查询商户</button><button data-message="查询火锅">找火锅店</button><button data-message="第一家有什么优惠券">查优惠券</button><button data-message="我的订单">我的订单</button></div>
+  <form id="form"><input id="input" placeholder="例如：第一家有什么优惠券？" maxlength="4000" autocomplete="off" aria-label="咨询内容"><button class="send" id="send">发送</button></form>
+  <div class="footer">订单查询需要先登录 · <a href="./login.html">前往登录</a> · 查询结果以业务数据为准</div>
+</main>
+<script>
+  const messages=document.getElementById('messages'),input=document.getElementById('input');
+  let conversationId=null,busy=false;
+  function headers(){const h={'Content-Type':'application/json'};const t=sessionStorage.getItem('token');if(t)h.authorization=t;return h;}
+  function add(text,kind,traces){const div=document.createElement('div');div.className='message '+(kind||'');div.textContent=text;
+    if(traces&&traces.length){const details=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('pre');summary.textContent='查看业务查询记录（'+traces.length+' 次）';pre.textContent=JSON.stringify(traces,null,2);details.append(summary,pre);div.append(details);}
+    messages.append(div);messages.scrollTop=messages.scrollHeight;return div;
+  }
+  async function check(){try{const r=await fetch('/ai/health');if(!r.ok)throw Error();const d=await r.json();document.getElementById('status').textContent=d.mode==='mock'?'模拟模式：用预设规则选择真实业务工具，暂不调用大模型。':'模型模式：结合历史对话调用业务工具。';}catch(e){document.getElementById('status').textContent='客服服务未连接，请启动8082客服服务和8083 MCP服务。';}}
+  async function send(text){if(busy||!text.trim())return;busy=true;document.getElementById('send').disabled=true;document.getElementById('reset').disabled=true;input.value='';add(text,'user');const pending=add('正在查询，请稍候…');const abort=new AbortController();const timer=setTimeout(()=>abort.abort(),75000);
+    try{const r=await fetch('/ai/chat',{method:'POST',headers:headers(),body:JSON.stringify({message:text,conversationId}),signal:abort.signal});
+      const d=await r.json();pending.remove();if(d.conversationId)conversationId=d.conversationId;
+      if(r.status===401){add('登录已过期，请返回首页重新登录。','error');}
+      else if(r.status===404){conversationId=null;add('会话已过期，请重新发送问题。','error');}
+      else if(!r.ok||!d.success){add(d.errorMsg||'服务暂时不可用，请稍后重试。','error',d.tools);}
+      else add(d.reply,'',d.tools);
+    }catch(e){pending.textContent=e.name==='AbortError'?'等待超时，请稍后重试。':'连接失败，请确认客服服务已启动。';pending.classList.add('error');}
+    finally{clearTimeout(timer);busy=false;document.getElementById('send').disabled=false;document.getElementById('reset').disabled=false;input.focus();}
+  }
+  document.getElementById('form').onsubmit=e=>{e.preventDefault();send(input.value)};
+  document.querySelectorAll('[data-message]').forEach(b=>b.onclick=()=>send(b.dataset.message));
+  document.getElementById('reset').onclick=async()=>{if(busy)return;if(conversationId){try{await fetch('/ai/conversations/'+encodeURIComponent(conversationId),{method:'DELETE',headers:headers()})}catch(e){}}conversationId=null;messages.replaceChildren();add('你好！可以查询商户、优惠券和本人订单。试试“查询商户”，再问“第一家有什么优惠券”。');};
+  add('你好！可以查询商户、优惠券和本人订单。试试“查询商户”，再问“第一家有什么优惠券”。');check();
+</script>
+</body>
+</html>

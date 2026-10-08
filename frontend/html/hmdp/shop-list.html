@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>商户精选 · LifePulse 智享生活平台</title>
+  <!-- 引入样式 -->
+  <link rel="stylesheet" href="./css/element.css">
+
+  <link href="./css/shop-list.css" rel="stylesheet">
+  <link href="./css/main.css" rel="stylesheet">
+
+  <style type="text/css">
+
+  </style>
+  <link rel="icon" type="image/svg+xml" href="./imgs/lifepulse-mark.svg">
+  <link rel="stylesheet" href="./css/lifepulse.css?v=1">
+  <script src="./js/location.js?v=1"></script>
+  <script src="./js/lifepulse.js?v=1" defer></script>
+</head>
+<body class="page-shop-list">
+<div id="app">
+  <div class="header">
+    <div class="header-back-btn" @click="goBack"><i class="el-icon-arrow-left"></i></div>
+    <div class="header-title">{{typeName}}</div>
+    <div class="header-search">
+      <i class="el-icon-search"></i>
+    </div>
+  </div>
+  <div class="lp-location-note"><button data-location-city>选择城市</button> · {{params.campus ? '正在浏览成都清水河校区周边精选；可选择城市切换浏览范围。' : '按所选城市浏览商户。'}}</div>
+  <div class="sort-bar">
+    <div class="sort-item">
+      <el-dropdown trigger="click" @command="handleCommand">
+      <span class="el-dropdown-link">
+        {{typeName}}<i class="el-icon-arrow-down el-icon--right"></i>
+      </span>
+        <el-dropdown-menu slot="dropdown">
+          <el-dropdown-item v-for="t in types" :key="t.id" :command="t">
+            {{t.name}}
+          </el-dropdown-item>
+        </el-dropdown-menu>
+      </el-dropdown>
+    </div>
+    <div class="sort-item" @click="sortAndQuery('')">
+      距离 <i class="el-icon-arrow-down el-icon--right"></i>
+    </div>
+    <div class="sort-item" @click="sortAndQuery('comments')">
+      人气 <i class="el-icon-arrow-down el-icon--right"></i>
+    </div>
+    <div class="sort-item" @click="sortAndQuery('score')">
+      评分 <i class="el-icon-arrow-down el-icon--right"></i>
+    </div>
+  </div>
+  <div class="shop-list" @scroll="onScroll">
+    <p class="lp-empty" v-if="!loading && !shops.length">当前城市暂无商户，可切换城市查看。</p>
+    <div class="shop-box" v-for="s in shops" :key="s.id" @click="toDetail(s.id)">
+      <div class="shop-img"><img v-if="s.images" :src="s.images" :alt="s.areaPhoto ? '龙湖成都时代天街商圈实景，非本店照片' : s.name" @error="s.images=''"><div v-else class="lp-photo-pending">实拍图片待补充</div></div>
+      <div class="shop-info">
+        <div class="shop-title shop-item">{{s.name}} <span v-if="s.demo" class="lp-demo-tag">演示</span></div>
+        <span v-if="s.areaPhoto" class="lp-cover-label">商圈实景 · 非本店照片</span>
+        <div class="shop-rate shop-item" v-if="s.score > 0">
+          <el-rate
+              disabled :value="s.score/10"
+              text-color="#F63"
+              show-score
+          ></el-rate>
+          <span>{{s.ratingSource ? s.ratingSource+'参考评分' : s.comments+'条'}}</span>
+        </div>
+        <div v-if="!s.score" class="shop-item lp-muted">暂无公开评分</div>
+        <div class="shop-area shop-item">
+          <span>{{s.area}}</span>
+          <span v-if="s.distance">{{s.distance < 1000 ? s.distance.toFixed(1) + 'm' : (s.distance/1000).toFixed(1) + 'km'}}</span>
+        </div>
+        <div class="shop-avg shop-item">{{s.demo ? '演示数据 · 暂无实际价格' : (s.avgPrice ? '参考人均 ￥'+s.avgPrice : '价格请咨询商户')}}</div>
+        <div class="shop-address shop-item">
+          <i class="el-icon-map-location"></i>
+          <span>{{s.address}}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="./js/vue.js"></script>
+<script src="./js/axios.min.js"></script>
+<!-- 引入组件库 -->
+<script src="./js/element.js"></script>
+<script src="./js/common.js"></script>
+<script>
+
+  const app = new Vue({
+    el: "#app",
+    data: {
+      util,
+      isReachBottom: false,
+      loading: false,
+      hasMore: true,
+      types: [], // 类型列表
+      shops: [], // 商店列表
+      typeName: "",
+      params:{
+        typeId: 0,
+        current: 1,
+        sortBy: "",
+        city: LifePulseLocation.city,
+        campus: util.getUrlParam("campus") === "qingshuihe"
+      }
+    },
+    created() {
+      // 获取参数
+      this.params.typeId = util.getUrlParam("type");
+      this.typeName = util.getUrlParam("name");
+      // 查询类型
+      this.queryTypes();
+      // 查询商店
+      LifePulseLocation.ready.then(() => {this.params.city=this.params.campus ? "成都" : LifePulseLocation.city;this.queryShops();});
+      window.addEventListener('lifepulse:city-change', () => {this.params.campus=false;this.params.city=LifePulseLocation.city;this.params.current=1;this.shops=[];this.hasMore=true;this.queryShops();});
+    },
+    methods: {
+      queryTypes() {
+        axios.get("/shop-type/list")
+          .then(({data}) => {
+            this.types = data;
+          })
+          .catch(err => {
+            console.log(err);
+            this.$message.error(err)
+          })
+      },
+      queryShops() {
+        if(this.loading || !this.hasMore) return;
+        this.loading=true;
+        const query={...this.params};
+        axios.get(query.campus ? "/shop/of/campus" : "/shop/of/type", {
+            params: query
+          })
+          .then(({data}) => {
+            if(query.city !== this.params.city || query.sortBy !== this.params.sortBy || query.campus !== this.params.campus) return;
+            this.hasMore=!!data && data.length >= 10;
+            if (!data) return;
+            data.forEach(s => s.images = s.images.split(',')[0]);
+            this.shops = this.shops.concat(data);
+          })
+          .catch(err => {
+            console.log(err);
+            this.$message.error(err)
+          }).finally(() => {this.loading=false;if(query.city !== this.params.city || query.sortBy !== this.params.sortBy || query.campus !== this.params.campus)this.queryShops();})
+      },
+      handleCommand(t) {
+        location.href = "/shop-list.html?type="+t.id+"&name="+encodeURIComponent(t.name)+(this.params.campus ? "&campus=qingshuihe" : "");
+      },
+      sortAndQuery(sortBy) {
+        this.params.sortBy = sortBy;
+        this.params.current=1;this.shops=[];this.hasMore=true;
+        this.queryShops();
+      },
+      goBack() {
+        history.back();
+      },
+      toDetail(id) {
+        location.href = "/shop-detail.html?id="+id
+      },
+      onScroll(e) {
+        let scrollTop = e.target.scrollTop;
+        let offsetHeight = e.target.offsetHeight;
+        let scrollHeight = e.target.scrollHeight;
+        if(scrollTop + offsetHeight + 1 > scrollHeight && !this.isReachBottom && !this.loading && this.hasMore){
+          this.isReachBottom = true
+          console.log("触底")
+          this.params.current++
+          this.queryShops(this.params.current, 5);
+        }else{
+          this.isReachBottom = false
+        }
+      },
+    }
+  })
+</script>
+</body>
+</html>

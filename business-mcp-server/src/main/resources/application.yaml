@@ -1,0 +1,19 @@
+server:
+  address: 127.0.0.1
+  port: 8083
+spring:
+  application:
+    name: business-mcp-server
+  ai:
+    mcp:
+      server:
+        name: lifepulse-business
+        version: 1.0.0
+        type: SYNC
+        protocol: STREAMABLE
+        capabilities:
+          resource: false
+          prompt: false
+          completion: false
+business:
+  base-url: ${BUSINESS_BASE_URL:http://127.0.0.1:8081}
